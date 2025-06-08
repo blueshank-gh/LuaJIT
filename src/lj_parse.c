@@ -104,11 +104,13 @@ typedef struct FuncScope {
 
 #define FSCOPE_LOOP		0x01	/* Scope is a (breakable) loop. */
 #define FSCOPE_BREAK		0x02	/* Break used in scope. */
-#define FSCOPE_GOLA		0x04	/* Goto or label used in scope. */
-#define FSCOPE_UPVAL		0x08	/* Upvalue in scope. */
-#define FSCOPE_NOCLOSE		0x10	/* Do not close upvalues. */
+#define FSCOPE_CONTINUE		0x04	/* Continue used in scope. */
+#define FSCOPE_GOLA		0x08	/* Goto or label used in scope. */
+#define FSCOPE_UPVAL		0x10	/* Upvalue in scope. */
+#define FSCOPE_NOCLOSE		0x20	/* Do not close upvalues. */
 
 #define NAME_BREAK		((GCstr *)(uintptr_t)1)
+#define NAME_CONTINUE	((GCstr *)(uintptr_t)2)
 
 /* Index into variable stack. */
 typedef uint16_t VarIndex;
@@ -1147,7 +1149,7 @@ static MSize gola_new(LexState *ls, GCstr *name, uint8_t info, BCPos pc)
       lj_lex_error(ls, 0, LJ_ERR_XLIMC, LJ_MAX_VSTACK);
     lj_mem_growvec(ls->L, ls->vstack, ls->sizevstack, LJ_MAX_VSTACK, VarInfo);
   }
-  lua_assert(name == NAME_BREAK || lj_tab_getstr(fs->kt, name) != NULL);
+  lua_assert(name == NAME_BREAK || name == NAME_CONTINUE || lj_tab_getstr(fs->kt, name) != NULL);
   /* NOBARRIER: name is anchored in fs->kt and ls->vstack is not a GCobj. */
   setgcref(ls->vstack[vtop].name, obj2gco(name));
   ls->vstack[vtop].startpc = pc;
@@ -1199,7 +1201,7 @@ static void gola_resolve(LexState *ls, FuncScope *bl, MSize idx)
 	GCstr *name = strref(var_get(ls, ls->fs, vg->slot).name);
 	lua_assert((uintptr_t)name >= VARNAME__MAX);
 	ls->linenumber = ls->fs->bcbase[vg->startpc].line;
-	lua_assert(strref(vg->name) != NAME_BREAK);
+	lua_assert(strref(vg->name) != NAME_BREAK && strref(vg->name) != NAME_CONTINUE);
 	lj_lex_error(ls, 0, LJ_ERR_XGSCOPE,
 		     strdata(strref(vg->name)), strdata(name));
       }
@@ -1226,7 +1228,7 @@ static void gola_fixup(LexState *ls, FuncScope *bl)
 	  }
       } else if (gola_isgoto(v)) {
 	if (bl->prev) {  /* Propagate goto or break to outer scope. */
-	  bl->prev->flags |= name == NAME_BREAK ? FSCOPE_BREAK : FSCOPE_GOLA;
+	  bl->prev->flags |= name == NAME_BREAK ? FSCOPE_BREAK : (name == NAME_CONTINUE ? FSCOPE_CONTINUE : FSCOPE_GOLA);
 	  v->slot = bl->nactvar;
 	  if ((bl->flags & FSCOPE_UPVAL))
 	    gola_close(ls, v);
@@ -1283,6 +1285,16 @@ static void fscope_end(FuncState *fs)
       ls->vtop = idx;  /* Drop break label immediately. */
       gola_resolve(ls, bl, idx);
     } else {  /* Need the fixup step to propagate the breaks. */
+      gola_fixup(ls, bl);
+      return;
+    }
+  }
+  if ((bl->flags & FSCOPE_CONTINUE)) {
+    if ((bl->flags & FSCOPE_LOOP)) {
+      MSize idx = gola_new(ls, NAME_CONTINUE, VSTACK_LABEL, fs->pc-1);
+      ls->vtop = idx;  /* Drop continue label immediately. */
+      gola_resolve(ls, bl, idx);
+    } else {  /* Need the fixup step to propagate the continues. */
       gola_fixup(ls, bl);
       return;
     }
@@ -2659,6 +2671,11 @@ static int parse_stmt(LexState *ls)
     lj_lex_next(ls);
     break;
 #endif
+  case TK_continue:
+    lj_lex_next(ls);
+    ls->fs->bl->flags |= FSCOPE_CONTINUE;
+    gola_new(ls, NAME_CONTINUE, VSTACK_GOTO, bcemit_jmp(ls->fs));
+    break;
   case TK_label:
     parse_label(ls);
     break;

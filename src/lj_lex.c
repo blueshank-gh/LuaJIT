@@ -178,6 +178,37 @@ static void lex_longstring(LexState *ls, TValue *tv, int sep)
   }
 }
 
+/* Parse a long C-style comment (tv set to NULL). */
+static void lex_clongcomment(LexState *ls, TValue *tv)
+{
+  if (lex_iseol(ls))  /* Skip initial newline. */
+    lex_newline(ls);
+  for (;;) {
+    switch (ls->c) {
+    case LEX_EOF:
+      lj_lex_error(ls, TK_eof, tv ? LJ_ERR_XLSTR : LJ_ERR_XLCOM);
+      break;
+    case '*':
+      lex_next(ls);
+      if (ls->c == '/') {
+        lex_next(ls);
+        goto endloop;
+      }
+      break;
+    case '\n':
+    case '\r':
+      lex_save(ls, '\n');
+      lex_newline(ls);
+      if (!tv) lj_buf_reset(&ls->sb);  /* Don't waste space for comments. */
+      break;
+    default:
+      lex_savenext(ls);
+      break;
+    }
+  } endloop:
+  return;
+}
+
 /* Parse a string. */
 static void lex_string(LexState *ls, TValue *tv)
 {
@@ -315,22 +346,35 @@ static LexToken lex_scan(LexState *ls, TValue *tv)
     case '\f':
       lex_next(ls);
       continue;
+    case '/':
+      lex_next(ls);
+      if (ls->c == '*') {
+        // TODO: C-style comment
+        lex_clongcomment(ls, NULL);
+        lj_buf_reset(&ls->sb);
+      } else if (ls->c != '/') {
+        return '/';
+      }
+      /* Short comment "//.*\n". */
+      while (!lex_iseol(ls) && ls->c != LEX_EOF)
+	      lex_next(ls);
+      continue;
     case '-':
       lex_next(ls);
       if (ls->c != '-') return '-';
       lex_next(ls);
       if (ls->c == '[') {  /* Long comment "--[=*[...]=*]". */
-	int sep = lex_skipeq(ls);
-	lj_buf_reset(&ls->sb);  /* `lex_skipeq' may dirty the buffer */
-	if (sep >= 0) {
-	  lex_longstring(ls, NULL, sep);
-	  lj_buf_reset(&ls->sb);
-	  continue;
-	}
+        int sep = lex_skipeq(ls);
+        lj_buf_reset(&ls->sb);  /* `lex_skipeq' may dirty the buffer */
+        if (sep >= 0) {
+          lex_longstring(ls, NULL, sep);
+          lj_buf_reset(&ls->sb);
+          continue;
+        }
       }
       /* Short comment "--.*\n". */
       while (!lex_iseol(ls) && ls->c != LEX_EOF)
-	lex_next(ls);
+	      lex_next(ls);
       continue;
     case '[': {
       int sep = lex_skipeq(ls);
@@ -347,6 +391,12 @@ static LexToken lex_scan(LexState *ls, TValue *tv)
     case '=':
       lex_next(ls);
       if (ls->c != '=') return '='; else { lex_next(ls); return TK_eq; }
+    case '&':
+      lex_next(ls);
+      if (ls->c != '&') return '&'; else { lex_next(ls); return TK_and; }
+    case '|':
+      lex_next(ls);
+      if (ls->c != '|') return '|'; else { lex_next(ls); return TK_or; }
     case '<':
       lex_next(ls);
       if (ls->c != '=') return '<'; else { lex_next(ls); return TK_le; }
@@ -356,6 +406,9 @@ static LexToken lex_scan(LexState *ls, TValue *tv)
     case '~':
       lex_next(ls);
       if (ls->c != '=') return '~'; else { lex_next(ls); return TK_ne; }
+    case '!':
+      lex_next(ls);
+      if (ls->c != '=') return TK_not; else { lex_next(ls); return TK_ne; }
     case ':':
       lex_next(ls);
       if (ls->c != ':') return ':'; else { lex_next(ls); return TK_label; }
