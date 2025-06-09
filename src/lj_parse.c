@@ -1236,9 +1236,11 @@ static void gola_fixup(LexState *ls, FuncScope *bl)
 	  ls->linenumber = ls->fs->bcbase[v->startpc].line;
 	  if (name == NAME_BREAK)
 	    lj_lex_error(ls, 0, LJ_ERR_XBREAK);
-	  else
+	  else if (name == NAME_CONTINUE)
+      lj_lex_error(ls, 0, LJ_ERR_XCONT);
+    else
 	    lj_lex_error(ls, 0, LJ_ERR_XLUNDEF, strdata(name));
-	}
+	  }
       }
     }
   }
