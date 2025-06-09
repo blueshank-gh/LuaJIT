@@ -1279,27 +1279,31 @@ static void fscope_end(FuncState *fs)
   lua_assert(bl->nactvar == fs->nactvar);
   if ((bl->flags & (FSCOPE_UPVAL|FSCOPE_NOCLOSE)) == FSCOPE_UPVAL)
     bcemit_AJ(fs, BC_UCLO, bl->nactvar, 0);
+
+  int fixing = 0;
+
   if ((bl->flags & FSCOPE_BREAK)) {
     if ((bl->flags & FSCOPE_LOOP)) {
       MSize idx = gola_new(ls, NAME_BREAK, VSTACK_LABEL, fs->pc);
       ls->vtop = idx;  /* Drop break label immediately. */
       gola_resolve(ls, bl, idx);
-    } else {  /* Need the fixup step to propagate the breaks. */
-      gola_fixup(ls, bl);
-      return;
+    } else {
+      fixing = 1;
     }
   }
+
   if ((bl->flags & FSCOPE_CONTINUE)) {
     if ((bl->flags & FSCOPE_LOOP)) {
       MSize idx = gola_new(ls, NAME_CONTINUE, VSTACK_LABEL, fs->pc-1);
-      ls->vtop = idx;  /* Drop continue label immediately. */
       gola_resolve(ls, bl, idx);
-    } else {  /* Need the fixup step to propagate the continues. */
-      gola_fixup(ls, bl);
-      return;
+    } else {
+      fixing = 1;
     }
   }
-  if ((bl->flags & FSCOPE_GOLA)) {
+
+  if (fixing) {
+    gola_fixup(ls, bl);
+  } else if ((bl->flags & FSCOPE_GOLA)) {
     gola_fixup(ls, bl);
   }
 }
