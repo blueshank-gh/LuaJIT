@@ -1278,7 +1278,7 @@ static void fscope_end(FuncState *fs)
   fs->bl = bl->prev;
   var_remove(ls, bl->nactvar);
   fs->freereg = fs->nactvar;
-  lj_assertFS(bl->nactvar == fs->nactvar, "bad regalloc");
+  lua_assert(bl->nactvar == fs->nactvar);
   if ((bl->flags & (FSCOPE_UPVAL|FSCOPE_NOCLOSE)) == FSCOPE_UPVAL)
     bcemit_AJ(fs, BC_UCLO, bl->nactvar, 0);
   if ((bl->flags & FSCOPE_BREAK)) {
