@@ -1278,34 +1278,20 @@ static void fscope_end(FuncState *fs)
   fs->bl = bl->prev;
   var_remove(ls, bl->nactvar);
   fs->freereg = fs->nactvar;
-  lua_assert(bl->nactvar == fs->nactvar);
+  lj_assertFS(bl->nactvar == fs->nactvar, "bad regalloc");
   if ((bl->flags & (FSCOPE_UPVAL|FSCOPE_NOCLOSE)) == FSCOPE_UPVAL)
     bcemit_AJ(fs, BC_UCLO, bl->nactvar, 0);
-
-  int fixing = 0;
-
   if ((bl->flags & FSCOPE_BREAK)) {
     if ((bl->flags & FSCOPE_LOOP)) {
       MSize idx = gola_new(ls, NAME_BREAK, VSTACK_LABEL, fs->pc);
       ls->vtop = idx;  /* Drop break label immediately. */
       gola_resolve(ls, bl, idx);
-    } else {
-      fixing = 1;
+    } else {  /* Need the fixup step to propagate the breaks. */
+      gola_fixup(ls, bl);
+      return;
     }
   }
-
-  if ((bl->flags & FSCOPE_CONTINUE)) {
-    if ((bl->flags & FSCOPE_LOOP)) {
-      MSize idx = gola_new(ls, NAME_CONTINUE, VSTACK_LABEL, fs->pc-1);
-      gola_resolve(ls, bl, idx);
-    } else {
-      fixing = 1;
-    }
-  }
-
-  if (fixing) {
-    gola_fixup(ls, bl);
-  } else if ((bl->flags & FSCOPE_GOLA)) {
+  if ((bl->flags & FSCOPE_GOLA)) {
     gola_fixup(ls, bl);
   }
 }
@@ -2365,6 +2351,13 @@ static void parse_break(LexState *ls)
   gola_new(ls, NAME_BREAK, VSTACK_GOTO, bcemit_jmp(ls->fs));
 }
 
+/* Parse 'continue' statement. */
+static void parse_continue(LexState *ls)
+{
+  ls->fs->bl->flags |= FSCOPE_CONTINUE;
+  gola_new(ls, NAME_CONTINUE, VSTACK_GOTO, bcemit_jmp(ls->fs));
+}
+
 /* Parse 'goto' statement. */
 static void parse_goto(LexState *ls)
 {
@@ -2434,6 +2427,10 @@ static void parse_while(LexState *ls, BCLine line)
   lex_check(ls, TK_do);
   loop = bcemit_AD(fs, BC_LOOP, fs->nactvar, 0);
   parse_block(ls);
+  if(fs->bl->flags | FSCOPE_CONTINUE) {
+    MSize idx = gola_new(ls, NAME_CONTINUE, VSTACK_LABEL, fs->pc);
+    gola_resolve(ls, fs->bl, idx);
+  }
   jmp_patch(fs, bcemit_jmp(fs), start);
   lex_match(ls, TK_end, TK_while, line);
   fscope_end(fs);
@@ -2453,6 +2450,10 @@ static void parse_repeat(LexState *ls, BCLine line)
   lj_lex_next(ls);  /* Skip 'repeat'. */
   bcemit_AD(fs, BC_LOOP, fs->nactvar, 0);
   parse_chunk(ls);
+  if(fs->bl->flags | FSCOPE_CONTINUE) {
+    MSize idx = gola_new(ls, NAME_CONTINUE, VSTACK_LABEL, fs->pc);
+    gola_resolve(ls, fs->bl, idx);
+  }
   lex_match(ls, TK_until, TK_repeat, line);
   condexit = expr_cond(ls);  /* Parse condition (still inside inner scope). */
   if (!(bl2.flags & FSCOPE_UPVAL)) {  /* No upvalues? Just end inner scope. */
@@ -2498,6 +2499,10 @@ static void parse_for_num(LexState *ls, GCstr *varname, BCLine line)
   var_add(ls, 1);
   bcreg_reserve(fs, 1);
   parse_block(ls);
+  if(fs->bl->flags | FSCOPE_CONTINUE) {
+    MSize idx = gola_new(ls, NAME_CONTINUE, VSTACK_LABEL, fs->pc);
+    gola_resolve(ls, fs->bl, idx);
+  }
   fscope_end(fs);
   /* Perform loop inversion. Loop control instructions are at the end. */
   loopend = bcemit_AJ(fs, BC_FORL, base, NO_JMP);
@@ -2570,6 +2575,10 @@ static void parse_for_iter(LexState *ls, GCstr *indexname)
   var_add(ls, nvars-3);
   bcreg_reserve(fs, nvars-3);
   parse_block(ls);
+  if(fs->bl->flags | FSCOPE_CONTINUE) {
+    MSize idx = gola_new(ls, NAME_CONTINUE, VSTACK_LABEL, fs->pc);
+    gola_resolve(ls, fs->bl, idx);
+  }
   fscope_end(fs);
   /* Perform loop inversion. Loop control instructions are at the end. */
   jmp_patchins(fs, loop, fs->pc);
@@ -2679,8 +2688,7 @@ static int parse_stmt(LexState *ls)
 #endif
   case TK_continue:
     lj_lex_next(ls);
-    ls->fs->bl->flags |= FSCOPE_CONTINUE;
-    gola_new(ls, NAME_CONTINUE, VSTACK_GOTO, bcemit_jmp(ls->fs));
+    parse_continue(ls);
     break;
   case TK_label:
     parse_label(ls);
