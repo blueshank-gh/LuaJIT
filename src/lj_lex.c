@@ -315,22 +315,25 @@ static LexToken lex_scan(LexState *ls, TValue *tv)
     case '\f':
       lex_next(ls);
       continue;
-    case '/': // RaphaelIT7
+    case '/': // RaphaelIT7 (fixed for **/ edge case)
       lex_next(ls);
       if (ls->c != '/' && ls->c != '*') return '/';
       if (ls->c == '*') {  // Long comment "/* */".
+        lex_next(ls);
         for(;;) {
-          lex_next(ls);
           if (ls->c == '*') {
             lex_next(ls);
             if (ls->c == '/') {
               lex_next(ls);
               break;
+            } else {
+              continue;
             }
           } else if (ls->c == LEX_EOF) { // should we throw an error? (yes you should!)
             lj_lex_error(ls, TK_eof, LJ_ERR_XLCOM);
             break;
           }
+          lex_next(ls);
         }
       } else {
         /* Short comment "//" */
