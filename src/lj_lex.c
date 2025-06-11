@@ -178,37 +178,6 @@ static void lex_longstring(LexState *ls, TValue *tv, int sep)
   }
 }
 
-/* Parse a long C-style comment (tv set to NULL). */
-static void lex_clongcomment(LexState *ls, TValue *tv)
-{
-  if (lex_iseol(ls))  /* Skip initial newline. */
-    lex_newline(ls);
-  for (;;) {
-    switch (ls->c) {
-    case LEX_EOF:
-      lj_lex_error(ls, TK_eof, tv ? LJ_ERR_XLSTR : LJ_ERR_XLCOM);
-      break;
-    case '*':
-      lex_next(ls);
-      if (ls->c == '/') {
-        lex_next(ls);
-        goto endloop;
-      }
-      break;
-    case '\n':
-    case '\r':
-      lex_save(ls, '\n');
-      lex_newline(ls);
-      if (!tv) lj_buf_reset(&ls->sb);  /* Don't waste space for comments. */
-      break;
-    default:
-      lex_savenext(ls);
-      break;
-    }
-  } endloop:
-  return;
-}
-
 /* Parse a string. */
 static void lex_string(LexState *ls, TValue *tv)
 {
@@ -346,19 +315,28 @@ static LexToken lex_scan(LexState *ls, TValue *tv)
     case '\f':
       lex_next(ls);
       continue;
-    case '/':
+    case '/': // RaphaelIT7
       lex_next(ls);
-      if (ls->c == '*') {
-        // TODO: C-style comment
-        lex_clongcomment(ls, NULL);
-        lj_buf_reset(&ls->sb);
-      } else if (ls->c != '/') {
-        return '/';
+      if (ls->c != '/' && ls->c != '*') return '/';
+      if (ls->c == '*') {  // Long comment "/* */".
+        for(;;) {
+          lex_next(ls);
+          if (ls->c == '*') {
+            lex_next(ls);
+            if (ls->c == '/') {
+              lex_next(ls);
+              break;
+            }
+          } else if (ls->c == LEX_EOF) { // should we throw an error? (yes you should!)
+            lj_lex_error(ls, TK_eof, LJ_ERR_XLCOM);
+            break;
+          }
+        }
+      } else {
+        /* Short comment "//" */
+        while (!lex_iseol(ls) && ls->c != LEX_EOF)
+          lex_next(ls);
       }
-      /* Short comment "//.*\n". */
-      while (!lex_iseol(ls) && ls->c != LEX_EOF)
-	      lex_next(ls);
-      continue;
     case '-':
       lex_next(ls);
       if (ls->c != '-') return '-';
