@@ -284,6 +284,7 @@ lua_State *lj_state_new(lua_State *L)
   setgcrefr(L1->env, L->env);
   stack_init(L1, L);  /* init stack */
   lua_assert(iswhite(obj2gco(L1)));
+  L1->luabase = L->luabase;
   return L1;
 }
 
