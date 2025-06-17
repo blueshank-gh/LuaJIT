@@ -236,9 +236,31 @@ LUALIB_API void luaL_checkany(lua_State *L, int idx)
     lj_err_arg(L, idx, LJ_ERR_NOVAL);
 }
 
-LUA_API const char *lua_typename(lua_State *L, int t)
+const char* GMODLUA_GetUserType(lua_State* L, int index)
+{
+    if ( !lua_getmetatable(L, index) )
+        return "UserData";
+    lua_pushstring(L, "MetaName");
+    lua_gettable(L, -2);
+    if ( lua_isstring(L, -1) )
+    {
+        static char strName[128];
+        const char* name = lua_tolstring(L, -1, 0);
+        V_strncpy(strName, name, 128);
+        lua_settop(L, -3);
+        return (const char*)strName;
+    }
+    else
+    {
+        lua_settop(L, -3);
+        return "UserData";
+    }
+}
+
+LUA_API const char *lua_typename(lua_State *L, int t, int index)
 {
   UNUSED(L);
+  if (t == LUA_TUSERDATA && index) return GMODLUA_GetUserType(L, index);
   return lj_obj_typename[t+1];
 }
 
@@ -707,6 +729,7 @@ LUA_API void lua_createtable(lua_State *L, int narray, int nrec)
   incr_top(L);
 }
 
+static int g_iTypeNum = 0;
 LUALIB_API int luaL_newmetatable(lua_State *L, const char *tname)
 {
   GCtab *regt = tabV(registry(L));
@@ -716,11 +739,25 @@ LUALIB_API int luaL_newmetatable(lua_State *L, const char *tname)
     settabV(L, tv, mt);
     settabV(L, L->top++, mt);
     lj_gc_anybarriert(L, regt);
+    lua_pushstring(L, "MetaName");
+    lua_pushstring(L, tname);
+    lua_settable(L, -3);
+    lua_pushstring(L, "MetaID");
+    lua_pushnumber(L, g_iTypeNum);
+    lua_settable(L, -3);
     return 1;
   } else {
     copyTV(L, L->top++, tv);
     return 0;
   }
+}
+
+LUALIB_API int luaL_newmetatable_type(lua_State *L, const char *tname, int id)
+{
+  g_iTypeNum = id;
+  int result = luaL_newmetatable(L, tname);
+  g_iTypeNum = 0;
+  return result;
 }
 
 LUA_API int lua_pushthread(lua_State *L)
