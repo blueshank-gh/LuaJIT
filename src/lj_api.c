@@ -236,6 +236,14 @@ LUALIB_API void luaL_checkany(lua_State *L, int idx)
     lj_err_arg(L, idx, LJ_ERR_NOVAL);
 }
 
+char* V_strncpy(char *dest, const char *src, size_t n)
+{
+  char* result = strncpy(dest, src, n);
+  if ( n )
+    dest[n - 1] = 0;
+  return result;
+}
+
 const char* GMODLUA_GetUserType(lua_State* L, int index)
 {
     if ( !lua_getmetatable(L, index) )
