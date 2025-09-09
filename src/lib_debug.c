@@ -401,12 +401,14 @@ LJLIB_CF(debug_permanent)
   luaL_checktype(L, 2, LUA_TBOOLEAN);
   GCobj* o = gcV(tv);
   if (lua_toboolean(L, 2)) {
-    markpermanent(o);
+    makepermanent(G(L), o);
   } else {
     unmarkpermanent(o);
   }
   return 0;
 }
+
+/* ------------------------------------------------------------------------ */
 
 #include "lj_libdef.h"
 

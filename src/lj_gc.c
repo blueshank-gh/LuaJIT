@@ -310,8 +310,8 @@ static size_t propagatemark(global_State *g)
   GCobj *o = gcref(g->gc.gray);
   int gct = o->gch.gct;
   if (ispermanent(o)) {
-      setgcrefr(g->gc.gray, o->gch.gclist);
-      return 0;
+    setgcrefr(g->gc.gray, o->gch.gclist);
+    return 0;
   }
   lua_assert(isgray(o));
   gray2black(o);
@@ -396,7 +396,11 @@ static GCRef *gc_sweep(global_State *g, GCRef *p, uint32_t lim)
   int ow = otherwhite(g);
   GCobj *o;
   while ((o = gcref(*p)) != NULL && lim-- > 0) {
-    if (ispermanent(o)) {p = &o->gch.nextgc; continue;}
+    if (ispermanent(o)) {
+      makewhite(g, o);
+      p = &o->gch.nextgc;
+      continue;
+    }
     if (o->gch.gct == ~LJ_TTHREAD)  /* Need to sweep open upvalues, too. */
       gc_fullsweep(g, &gco2th(o)->openupval);
     if (((o->gch.marked ^ LJ_GC_WHITES) & ow)) {  /* Black or current white? */
@@ -404,7 +408,7 @@ static GCRef *gc_sweep(global_State *g, GCRef *p, uint32_t lim)
       makewhite(g, o);  /* Value is alive, change to the current white. */
       p = &o->gch.nextgc;
     } else {  /* Otherwise value is dead, free it. */
-      lua_assert(isdead(g, o) || ow == LJ_GC_SFIXED);
+      lua_assert(isdead(g, o) || ow == LJ_GC_SFIXED || !ispermanent(o));
       setgcrefr(*p, o->gch.nextgc);
       if (o == gcref(g->gc.root))
 	setgcrefr(g->gc.root, o->gch.nextgc);  /* Adjust list anchor. */
