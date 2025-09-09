@@ -395,6 +395,19 @@ LJLIB_CF(debug_traceback)
 
 /* ------------------------------------------------------------------------ */
 
+LJLIB_CF(debug_permanent)
+{
+  TValue *tv = lj_lib_checkany(L, 1);
+  luaL_checktype(L, 2, LUA_TBOOLEAN);
+  GCobj* o = gcV(tv);
+  if (lua_toboolean(L, 2)) {
+    markpermanent(o);
+  } else {
+    unmarkpermanent(o);
+  }
+  return 0;
+}
+
 #include "lj_libdef.h"
 
 LUALIB_API int luaopen_debug(lua_State *L)
