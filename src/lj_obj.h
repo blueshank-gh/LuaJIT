@@ -56,7 +56,7 @@ typedef struct GCRef {
 } GCRef;
 
 /* Common GC header for all collectable objects. */
-#define GCHeader	GCRef nextgc; uint8_t marked; uint8_t gct
+#define GCHeader	GCRef nextgc; uint8_t marked; uint8_t gct; uint8_t bucket; uint8_t age
 /* This occupies 6 bytes, so use the next 2 bytes for non-32 bit fields. */
 
 #if LJ_GC64
@@ -569,6 +569,11 @@ typedef enum {
 #define basemt_it(g, it)	((g)->gcroot[GCROOT_BASEMT+~(it)])
 #define basemt_obj(g, o)	((g)->gcroot[GCROOT_BASEMT+itypemap(o)])
 #define mmname_str(g, mm)	(strref((g)->gcroot[GCROOT_MMNAME+(mm)]))
+#define GC_BUCKETS 3
+// This is a new GC system utilizing buckets with different approaches.
+// Bucket 0 - Default GC System, if survived a collection without activity move to bucket 1
+// Bucket 1 - Every-Other GC System, if survived multiple cycles cold move to bucket 2
+// Bucket 2 - Conditional GC System, if written to or referenced by hot objects demote back to bucket 0
 
 typedef struct GCState {
   GCSize total;		/* Memory currently allocated. */
@@ -578,10 +583,10 @@ typedef struct GCState {
   uint8_t nocdatafin;	/* No cdata finalizer called. */
   uint8_t unused2;
   MSize sweepstr;	/* Sweep position in string table. */
-  GCRef root;		/* List of all collectable objects. */
-  MRef sweep;		/* Sweep position in root list. */
-  GCRef gray;		/* List of gray objects. */
-  GCRef grayagain;	/* List of objects for atomic traversal. */
+  GCRef root[GC_BUCKETS];		/* List of all collectable objects. */
+  MRef sweep[GC_BUCKETS];		/* Sweep position in root list. */
+  GCRef gray[GC_BUCKETS];		/* List of gray objects. */
+  GCRef grayagain[GC_BUCKETS];	/* List of objects for atomic traversal. */
   GCRef weak;		/* List of weak tables (to be cleared). */
   GCRef mmudata;	/* List of userdata (to be finalized). */
   GCSize debt;		/* Debt (how much GC is behind schedule). */

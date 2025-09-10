@@ -146,8 +146,8 @@ static void trace_save(jit_State *J, GCtrace *T)
   size_t szins = (J->cur.nins-J->cur.nk)*sizeof(IRIns);
   char *p = (char *)T + sztr;
   memcpy(T, &J->cur, sizeof(GCtrace));
-  setgcrefr(T->nextgc, J2G(J)->gc.root);
-  setgcrefp(J2G(J)->gc.root, T);
+  setgcrefr(T->nextgc, J2G(J)->gc.root[T->bucket]);
+  setgcrefp(J2G(J)->gc.root[T->bucket], T);
   newwhite(J2G(J), T);
   T->gct = ~LJ_TTRACE;
   T->ir = (IRIns *)p - J->cur.nk;  /* The IR has already been copied above. */
@@ -157,7 +157,7 @@ static void trace_save(jit_State *J, GCtrace *T)
   J->cur.traceno = 0;
   J->curfinal = NULL;
   setgcrefp(J->trace[T->traceno], T);
-  lj_gc_barriertrace(J2G(J), T->traceno);
+  lj_gc_barriertrace(J2G(J), T->traceno, T->bucket);
   lj_gdbjit_addtrace(J, T);
 #ifdef LUAJIT_USE_PERFTOOLS
   perftools_addtrace(T);
