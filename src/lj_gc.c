@@ -865,6 +865,7 @@ void gc_setbucket(global_State *g, GCobj *o, uint8_t nb)
   uint8_t ob = o->gch.bucket;
   if (ob == nb) return;
   {
+    // TODO: once this system is deemed stable, we can add a prevgc to gch to make this O(1)
     GCRef *pp = &g->gc.root[ob];
     GCobj *p;
     while ((p = gcref(*pp)) != NULL) {
