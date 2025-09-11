@@ -391,6 +391,7 @@ static const GCFreeFunc gc_freefunc[] = {
 static GCRef *gc_sweep(global_State *g, uint8_t b, GCRef *p, uint32_t lim)
 {
   /* Mask with other white and LJ_GC_FIXED. Or LJ_GC_SFIXED on shutdown. */
+  if (gcrefu(*p) == NULL) return p; /* Scanning an empty space */
   int ow = otherwhite(g);
   GCobj *o;
   while ((o = gcref(*p)) != NULL && lim-- > 0) {
@@ -565,8 +566,8 @@ void lj_gc_finalize_cdata(lua_State *L)
 void lj_gc_freeall(global_State *g)
 {
   /* Free everything, except super-fixed objects (the main thread). */
+  g->gc.currentwhite = LJ_GC_WHITES | LJ_GC_SFIXED;
   for (uint8_t k = 0; k < GC_BUCKETS; ++k) {
-    g->gc.currentwhite = LJ_GC_WHITES | LJ_GC_SFIXED;
     gc_fullsweep(g, k, &g->gc.root[k]);
   }
   MSize i, strmask;
@@ -690,6 +691,7 @@ static size_t gc_onestep(lua_State *L, uint8_t b)
 int LJ_FASTCALL lj_gc_step_bucket(lua_State *L, uint8_t b)
 {
   global_State *g = G(L);
+  if (gcrefu(g->gc.root[b]) == NULL) return 1; /* Finished a GC cycle, nothing to do. */
   GCSize lim;
   int32_t ostate = g->vmstate;
   setvmstate(g, GC);
@@ -770,6 +772,7 @@ int LJ_FASTCALL lj_gc_step_jit(global_State *g, MSize steps)
 void lj_gc_fullgc(lua_State *L, uint8_t b)
 {
   global_State *g = G(L);
+  if (gcrefu(g->gc.root[b]) == NULL) return; /* Nothing to do. */
   int32_t ostate = g->vmstate;
   setvmstate(g, GC);
   if (g->gc.state <= GCSatomic) {  /* Caught somewhere in the middle. */
