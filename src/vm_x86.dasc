@@ -475,11 +475,15 @@
 |.endmacro
 |
 |// Move table write barrier back. Overwrites reg.
-|.macro barrierback, tab, reg
+|.macro barrierback, tab, reg, reg2, tmp
 |  and byte tab->marked, (uint8_t)~LJ_GC_BLACK	// black2gray(tab)
+|  mov tmp, reg2 // to restore
+|  mov reg2, tab->bucket
 |  mov reg, [DISPATCH+DISPATCH_GL(gc.grayagain)]
-|  mov [DISPATCH+DISPATCH_GL(gc.grayagain)], tab
+|  mov reg, [reg + reg2*4]
+|  mov [reg + reg2*4], tab
 |  mov tab->gclist, reg
+|  mov reg2, tmp
 |.endmacro
 |
 |//-----------------------------------------------------------------------
@@ -1574,7 +1578,7 @@ static void build_subroutines(BuildCtx *ctx)
   |  test byte TAB:RB->marked, LJ_GC_BLACK	// isblack(table)
   |  jz >1
   |  // Possible write barrier. Table is black, but skip iswhite(mt) check.
-  |  barrierback TAB:RB, RC
+  |  barrierback TAB:RB, RC, RD, TMP1
   |1:
   |  jmp ->fff_res1
   |
@@ -4445,7 +4449,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  jmp ->BC_TSETS_Z
     |
     |7:  // Possible table write barrier for the value. Skip valiswhite check.
-    |  barrierback TAB:RB, RA
+    |  barrierback TAB:RB, RA, RD, TMP1
     |  movzx RA, PC_RA			// Restore RA.
     |  jmp <2
     break;
@@ -4534,7 +4538,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  jmp <2				// Must check write barrier for value.
     |
     |7:  // Possible table write barrier for the value. Skip valiswhite check.
-    |  barrierback TAB:RB, RC		// Destroys STR:RC.
+    |  barrierback TAB:RB, RC, RD, TMP1		// Destroys STR:RC.
     |  jmp <3
     break;
   case BC_TSETB:
@@ -4572,7 +4576,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  jmp <1
     |
     |7:  // Possible table write barrier for the value. Skip valiswhite check.
-    |  barrierback TAB:RB, RA
+    |  barrierback TAB:RB, RA, RD, TMP1
     |  movzx RA, PC_RA			// Restore RA.
     |  jmp <2
     break;
@@ -4605,7 +4609,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  ins_next
     |
     |7:  // Possible table write barrier for the value. Skip valiswhite check.
-    |  barrierback TAB:RB, RA
+    |  barrierback TAB:RB, RA, RD, TMP1
     |  movzx RA, PC_RA			// Restore RA.
     |  jmp <2
     break;
@@ -4669,7 +4673,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
     |  jmp <1				// Retry.
     |
     |7:  // Possible table write barrier for any value. Skip valiswhite check.
-    |  barrierback TAB:RB, RD
+    |  barrierback TAB:RB, RD, RD, TMP1
     |  jmp <2
     break;
 

@@ -157,7 +157,7 @@ static void trace_save(jit_State *J, GCtrace *T)
   J->cur.traceno = 0;
   J->curfinal = NULL;
   setgcrefp(J->trace[T->traceno], T);
-  lj_gc_barriertrace(J2G(J), T->traceno, T->bucket);
+  lj_gc_barriertrace(J2G(J), T->traceno);
   lj_gdbjit_addtrace(J, T);
 #ifdef LUAJIT_USE_PERFTOOLS
   perftools_addtrace(T);
@@ -429,6 +429,8 @@ static void trace_start(jit_State *J)
 
   /* Setup enough of the current trace to be able to send the vmevent. */
   memset(&J->cur, 0, sizeof(GCtrace));
+  J->cur.bucket = 0;
+  J->cur.age = 0;
   J->cur.traceno = traceno;
   J->cur.nins = J->cur.nk = REF_BASE;
   J->cur.ir = J->irbuf;

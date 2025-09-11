@@ -56,7 +56,7 @@ typedef struct GCRef {
 } GCRef;
 
 /* Common GC header for all collectable objects. */
-#define GCHeader	GCRef nextgc; uint8_t marked; uint8_t gct; uint8_t bucket; uint8_t age
+#define GCHeader	GCRef nextgc; uint8_t marked; uint8_t gct; uint8_t bucket; uint8_t age; uint8_t unused_1; uint8_t unused_2
 /* This occupies 6 bytes, so use the next 2 bytes for non-32 bit fields. */
 
 #if LJ_GC64
@@ -570,10 +570,6 @@ typedef enum {
 #define basemt_obj(g, o)	((g)->gcroot[GCROOT_BASEMT+itypemap(o)])
 #define mmname_str(g, mm)	(strref((g)->gcroot[GCROOT_MMNAME+(mm)]))
 #define GC_BUCKETS 3
-// This is a new GC system utilizing buckets with different approaches.
-// Bucket 0 - Default GC System, if survived a collection without activity move to bucket 1
-// Bucket 1 - Every-Other GC System, if survived multiple cycles cold move to bucket 2
-// Bucket 2 - Conditional GC System, if written to or referenced by hot objects demote back to bucket 0
 
 typedef struct GCState {
   GCSize total;		/* Memory currently allocated. */

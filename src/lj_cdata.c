@@ -40,11 +40,11 @@ GCcdata *lj_cdata_newv(lua_State *L, CTypeID id, CTSize sz, CTSize align)
   cdatav(cd)->extra = extra;
   cdatav(cd)->len = sz;
   g = G(L);
+  cd->bucket = 0;
+  cd->age = 0;
   setgcrefr(cd->nextgc, g->gc.root[0]);
   setgcref(g->gc.root[0], obj2gco(cd));
   newwhite(g, obj2gco(cd));
-  cd->bucket = 0;
-  cd->age = 0;
   cd->marked |= 0x80;
   cd->gct = ~LJ_TCDATA;
   cd->ctypeid = id;
