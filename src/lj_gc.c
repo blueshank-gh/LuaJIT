@@ -6,6 +6,7 @@
 ** Copyright (C) 1994-2008 Lua.org, PUC-Rio. See Copyright Notice in lua.h
 */
 
+#pragma optimize("", off) // TODO: Remove once a stable version is created.
 #define lj_gc_c
 #define LUA_CORE
 
@@ -26,6 +27,19 @@
 #endif
 #include "lj_trace.h"
 #include "lj_vm.h"
+
+/*
+    This is an attempt to create a Generational GC that takes barriers and age as a factor.
+    None of this is stable and is prone to undefined behavior.
+    This does enlarge some objects, causing memory to increase compared to the original LJ.
+    Not promoting anything shouldn't cause any undefined behavior, as bucket 0 would be the only GC entry being accessed.
+*/
+// TODO: Use spare unused_1 as a form of tracking barriers. (probably don't need to do that)
+// TODO: When a GC is running its cycle, just use g->gc.bucket to determine current processing bucket.
+// TOPO: Create proper age & selection logic for determining buckets for processing.
+// TODO: Investigate sweepstr splitting into multiple buckets.
+// TODO: Configurable stepsize per bucket & each bucket with a unique default stepsize & sweep.
+// TODO: Promotions should occure during gc_sweep, age is incremented
 
 #define GCSTEPSIZE	1024u
 #define GCSWEEPMAX	40
@@ -617,6 +631,19 @@ static void atomic(global_State *g, lua_State *L, uint8_t b)
   g->gc.estimate = g->gc.total - (GCSize)udsize;  /* Initial estimate. */
 }
 
+/* Basic algorithm to identify which buckets to select. */
+static uint8_t gc_bucket_select() { // TODO: this needs to be updated to use thresholds instead per-bucket.
+    static uint32_t ff = 0;
+    for (uint8_t i = 1; i < GC_BUCKETS; ++i) {
+        if (ff % (i * 2) == (i * 2) - 1) {
+            if (++ff == 0xFFFFFFFF) ff = 0;
+            return i;
+        }
+    }
+    if (++ff == 0xFFFFFFFF) ff = 0;
+    return 0;
+}
+
 /* GC state machine. Returns a cost estimate for each step performed. */
 static size_t gc_onestep(lua_State *L, uint8_t b)
 {
@@ -634,8 +661,13 @@ static size_t gc_onestep(lua_State *L, uint8_t b)
     if (tvref(g->jit_base))  /* Don't run atomic phase on trace. */
       return LJ_MAX_MEM;
     atomic(g, L, b);
-    g->gc.state = GCSsweepstring;  /* Start of sweep phase. */
-    g->gc.sweepstr = 0;
+    if (b != 0) {
+      g->gc.state = GCSsweep;  /* Skip to sweep phase as strings are in bucket 0. */
+    }
+    else {
+      g->gc.state = GCSsweepstring;  /* Start of sweep phase. */
+      g->gc.sweepstr = 0;
+    }
     return 0;
   case GCSsweepstring: {
     GCSize old = g->gc.total;
@@ -720,14 +752,16 @@ int LJ_FASTCALL lj_gc_step_bucket(lua_State *L, uint8_t b)
   }
 }
 
-void LJ_FASTCALL lj_gc_step_all(lua_State *L) {
-  for (uint8_t i = 0; i < GC_BUCKETS; ++i) {
-    lj_gc_step_bucket(L, i);
-  }
+int LJ_FASTCALL lj_gc_step_all(lua_State *L) {
+  global_State *g = G(L);
+  if (g->gc.state == GCSpause) /* Never change buckets when processing a GC cycle */
+    g->gc.bucket = gc_bucket_select();
+  // TODO: this is improper as bucket 0 will be processed way less often.
+  return lj_gc_step_bucket(L, g->gc.bucket);
 }
 
 int LJ_FASTCALL lj_gc_step(lua_State *L) {
-  return lj_gc_step_bucket(L, 0);
+  return lj_gc_step_all(L);
 }
 
 /* Ditto, but fix the stack top first. */
@@ -746,7 +780,7 @@ void LJ_FASTCALL lj_gc_step_fixtop_all(lua_State *L)
 void LJ_FASTCALL lj_gc_step_fixtop(lua_State *L)
 {
   if (curr_funcisL(L)) L->top = curr_topL(L);
-  lj_gc_step(L);
+  lj_gc_step_all(L);
 }
 
 #if LJ_HASJIT
@@ -756,8 +790,7 @@ int LJ_FASTCALL lj_gc_step_jit_bucket(global_State *g, uint8_t b, MSize steps)
   lua_State *L = gco2th(gcref(g->cur_L));
   L->base = tvref(G(L)->jit_base);
   L->top = curr_topL(L);
-  while (steps-- > 0 && lj_gc_step_bucket(L, b) == 0)
-    ;
+  while (steps-- > 0 && lj_gc_step_bucket(L, b) == 0);
   /* Return 1 to force a trace exit. */
   return (G(L)->gc.state == GCSatomic || G(L)->gc.state == GCSfinalize);
 }
@@ -769,9 +802,9 @@ int LJ_FASTCALL lj_gc_step_jit(global_State *g, MSize steps)
 #endif
 
 /* Perform a full GC cycle. */
-void lj_gc_fullgc(lua_State *L, uint8_t b)
+void lj_gc_fullgc_bucket(lua_State* L, uint8_t b)
 {
-  global_State *g = G(L);
+  global_State* g = G(L);
   if (gcrefu(g->gc.root[b]) == NULL) return; /* Nothing to do. */
   int32_t ostate = g->vmstate;
   setvmstate(g, GC);
@@ -784,6 +817,9 @@ void lj_gc_fullgc(lua_State *L, uint8_t b)
       g->gc.state = GCSsweepstring;  /* Fast forward to the sweep phase. */
       g->gc.sweepstr = 0;
     }
+    else {
+      g->gc.state = GCSsweep; /* Strings for now should stay in bucket 0. */
+    }
   }
   while (g->gc.state == GCSsweepstring || g->gc.state == GCSsweep)
     gc_onestep(L, b);  /* Finish sweep. */
@@ -791,8 +827,22 @@ void lj_gc_fullgc(lua_State *L, uint8_t b)
   /* Now perform a full GC. */
   g->gc.state = GCSpause;
   do { gc_onestep(L, b); } while (g->gc.state != GCSpause);
-  g->gc.threshold = (g->gc.estimate/100) * g->gc.pause;
+  g->gc.threshold = (g->gc.estimate / 100) * g->gc.pause;
   g->vmstate = ostate;
+}
+
+void lj_gc_fullgc(lua_State *L)
+{
+  global_State *g = G(L);
+  if (g->gc.bucket > 0 && g->gc.state != GCSpause) {
+    lj_gc_fullgc_bucket(L, g->gc.bucket); /* Might have had a bucket already running before... */
+  }
+  g->gc.bucket = 0; lj_gc_fullgc_bucket(L, 0); /* Bucket 0 always runs */
+  uint8_t select = gc_bucket_select(); /* Check if other buckets should run */
+  if (select > 0) {
+      g->gc.bucket = select;
+      lj_gc_fullgc_bucket(L, select);
+  }
 }
 
 /* -- Write barriers ------------------------------------------------------ */
@@ -856,55 +906,97 @@ void lj_gc_barriertrace(global_State *g, uint32_t traceno)
 
 /* -- Allocator ----------------------------------------------------------- */
 
-/* Moves GC objects to different buckets */
-void gc_setbucket(global_State* g, GCobj* o, uint8_t nb)
+/* Unlinks GC objects from being in gray lists, used for transfers */
+static inline int gc_unlink_gray(global_State *g, GCobj *o, uint8_t b)
 {
-    uint8_t ob = o->gch.bucket;
-    if (ob == nb) return;
-    {
-        // TODO: once this system is deemed stable, we can add a prevgc to gch to make this O(1)
-        // TODO: we need to also check gray/grayagain before moving
-        GCRef* pp = &g->gc.root[ob];
-        GCobj* p;
-        while ((p = gcref(*pp)) != NULL) {
-            if (p == o) {
-                setgcrefr(*pp, o->gch.nextgc);
-                break;
-            }
-            pp = &p->gch.nextgc;
+  GCRef *pp;
+  GCobj *p;
+
+  pp = &g->gc.gray[b];
+  p = gcref(*pp);
+  while (p) {
+      if (p == o) {
+          setgcrefr(*pp, o->gch.gclist);
+          setgcrefnull(o->gch.gclist);
+          return 1;
+      }
+      pp = &p->gch.gclist;
+      p = gcref(*pp);
+  }
+
+  pp = &g->gc.grayagain[b];
+  p = gcref(*pp);
+  while (p) {
+      if (p == o) {
+          setgcrefr(*pp, o->gch.gclist);
+          setgcrefnull(o->gch.gclist);
+          return 1;
+      }
+      pp = &p->gch.gclist;
+      p = gcref(*pp);
+  }
+
+  return 0;
+}
+
+/* Moves GC objects to different buckets */
+void LJ_FASTCALL gc_setbucket(global_State* g, GCobj* o, uint8_t nb)
+{
+  uint8_t ob = o->gch.bucket;
+  if (ob == nb) return;
+
+  {
+    GCRef* pp = &g->gc.root[ob];
+    GCobj* p;
+    GCobj* next = gcnext(o);
+    while ((p = gcref(*pp)) != NULL) {
+        if (p == o) {
+            setgcref(*pp, next);
+            break;
         }
+        pp = &p->gch.nextgc;
     }
-    setgcrefr(o->gch.nextgc, g->gc.root[nb]);
-    setgcref(g->gc.root[nb], o);
-    o->gch.bucket = nb;
+  }
+
+  if (isgray(o)) {
+    gc_unlink_gray(g, o, ob);
+    setgcrefr(o->gch.gclist, g->gc.gray[nb]);
+    setgcref(g->gc.gray[nb], o);
+  }
+
+  // TODO: Disabled for now, need to figure out why running different buckets corrupts bucket 0
+  //setgcrefr(o->gch.nextgc, g->gc.root[nb]);
+  //setgcref(g->gc.root[nb], o);
+  o->gch.bucket = nb;
 }
 
 /* Promote an object to a higher bucket, called from age or other conditions */
-void gc_promote_object(global_State* g, GCobj* o)
+int LJ_FASTCALL gc_promote_object(global_State* g, GCobj* o)
 { // only promote objects from a root list (not while in gray/grayagain)
-    if (o->gch.bucket != GC_BUCKETS - 1) {
-        o->gch.age = 0;
-        gc_setbucket(g, o, o->gch.bucket + 1);
-    }
+  if (g->gc.state != GCSpause) return 0;
+  if (o->gch.bucket != GC_BUCKETS - 1) {
+    o->gch.age = 0;
+    gc_setbucket(g, o, o->gch.bucket + 1);
+    return 1;
+  }
+  return 0;
 }
 
 /* Demote an object to bucket 0, called from barriers and on access */
-void gc_demote_object(global_State* g, GCobj* o)
+int LJ_FASTCALL gc_demote_object(global_State* g, GCobj* o)
 {
-    if (o->gch.bucket != 0) {
-        o->gch.age = 0;
-        gc_setbucket(g, o, 0);
-        if (g->gc.state == GCSpropagate || g->gc.state == GCSatomic) {
-            if (iswhite(o)) {
-                white2gray(o);
-                setgcrefr(o->gch.gclist, g->gc.gray[0]);
-                setgcref(g->gc.gray[0], o);
-            }
-        }
+  if (o->gch.bucket != 0) {
+    o->gch.age = 0;
+    gc_setbucket(g, o, 0);
+    if (g->gc.state == GCSpropagate || g->gc.state == GCSatomic) {
+      if (iswhite(o)) {
+        gc_mark(g, o);
+      }
     }
-    else {
-        o->gch.age = 0;
-    }
+    return 1;
+  }
+  o->gch.age = 0;
+  return 0;
 }
 
 /* Call pluggable memory allocator to allocate or resize a fragment. */
@@ -930,6 +1022,7 @@ void * LJ_FASTCALL lj_mem_newgco(lua_State *L, GCSize size)
     lj_err_mem(L);
   lua_assert(checkptrGC(o));
   g->gc.total += size;
+  o->gch.gcf = 0;
   o->gch.bucket = 0;
   o->gch.age = 0;
   setgcrefr(o->gch.nextgc, g->gc.root[0]);

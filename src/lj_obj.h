@@ -56,8 +56,8 @@ typedef struct GCRef {
 } GCRef;
 
 /* Common GC header for all collectable objects. */
-#define GCHeader	GCRef nextgc; uint8_t marked; uint8_t gct; uint8_t bucket; uint8_t age; uint8_t unused_1; uint8_t unused_2
-/* This occupies 6 bytes, so use the next 2 bytes for non-32 bit fields. */
+#define GCHeader	GCRef nextgc; uint8_t marked; uint8_t gct; uint8_t gcf; uint8_t bucket; uint8_t age; uint8_t unused_1
+/* This occupies 12 bytes, unused_1 to be changed later on. */
 
 #if LJ_GC64
 #define gcref(r)	((GCobj *)(r).gcptr64)
@@ -312,7 +312,6 @@ typedef struct GCudata {
   GCRef env;		/* Should be at same offset in GCfunc. */
   MSize len;		/* Size of payload. */
   GCRef metatable;	/* Must be at same offset in GCtab. */
-  uint32_t align1;	/* To force 8 byte alignment of the payload. */
 } GCudata;
 
 /* Userdata types. */
@@ -576,6 +575,7 @@ typedef struct GCState {
   GCSize threshold;	/* Memory threshold. */
   uint8_t currentwhite;	/* Current white color. */
   uint8_t state;	/* GC state. */
+  uint8_t bucket;   /* Current bucket. */
   uint8_t nocdatafin;	/* No cdata finalizer called. */
   uint8_t unused2;
   MSize sweepstr;	/* Sweep position in string table. */

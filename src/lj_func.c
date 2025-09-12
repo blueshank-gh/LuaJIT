@@ -52,6 +52,9 @@ static GCupval *func_finduv(lua_State *L, TValue *slot)
   uv = lj_mem_newt(L, sizeof(GCupval), GCupval);
   newwhite(g, uv);
   uv->gct = ~LJ_TUPVAL;
+  uv->gcf = 0;
+  uv->bucket = 0;
+  uv->age = 0;
   uv->closed = 0;  /* Still open. */
   setmref(uv->v, slot);  /* Pointing to the stack slot. */
   /* NOBARRIER: The GCupval is new (marked white) and open. */

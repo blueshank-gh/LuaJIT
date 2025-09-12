@@ -55,7 +55,7 @@ LJ_FUNC void lj_gc_finalize_cdata(lua_State *L);
 #endif
 LJ_FUNC void lj_gc_freeall(global_State *g);
 LJ_FUNCA int LJ_FASTCALL lj_gc_step_bucket(lua_State *L, uint8_t b);
-LJ_FUNCA void LJ_FASTCALL lj_gc_step_all(lua_State *L);
+LJ_FUNCA int LJ_FASTCALL lj_gc_step_all(lua_State *L);
 LJ_FUNCA int LJ_FASTCALL lj_gc_step(lua_State *L);
 LJ_FUNCA void LJ_FASTCALL lj_gc_step_fixtop_bucket(lua_State *L, uint8_t b);
 LJ_FUNCA void LJ_FASTCALL lj_gc_step_fixtop_all(lua_State *L);
@@ -65,7 +65,13 @@ LJ_FUNC int LJ_FASTCALL lj_gc_step_jit_bucket(global_State *g, uint8_t b, MSize 
 LJ_FUNC void LJ_FASTCALL lj_gc_step_jit_all(global_State *g, MSize steps);
 LJ_FUNC int LJ_FASTCALL lj_gc_step_jit(global_State *g, MSize steps);
 #endif
-LJ_FUNC void lj_gc_fullgc(lua_State *L, uint8_t b);
+LJ_FUNC void lj_gc_fullgc_bucket(lua_State *L, uint8_t b);
+LJ_FUNC void lj_gc_fullgc(lua_State *L);
+
+/* GC Generational. */
+LJ_FUNC void LJ_FASTCALL gc_setbucket(global_State* g, GCobj* o, uint8_t nb);
+LJ_FUNC int LJ_FASTCALL gc_promote_object(global_State* g, GCobj* o);
+LJ_FUNC int LJ_FASTCALL gc_demote_object(global_State* g, GCobj* o);
 
 /* GC check: drive collector forward if the GC threshold has been reached. */
 #define lj_gc_check(L) \

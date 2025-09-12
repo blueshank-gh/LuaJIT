@@ -192,6 +192,9 @@ LUA_API lua_State *lua_newstate(lua_Alloc f, void *ud)
   if (GG == NULL || !checkptrGC(GG)) return NULL;
   memset(GG, 0, sizeof(GG_State));
   L->gct = ~LJ_TTHREAD;
+  L->gcf = 0;
+  L->bucket = 0;
+  L->age = 0;
   L->marked = LJ_GC_WHITE0 | LJ_GC_FIXED | LJ_GC_SFIXED;  /* Prevent free. */
   L->dummy_ffid = FF_C;
   setmref(L->glref, g);

@@ -395,6 +395,57 @@ LJLIB_CF(debug_traceback)
 
 /* ------------------------------------------------------------------------ */
 
+LJLIB_CF(debug_permanent)
+{
+  TValue *tv = lj_lib_checkany(L, 1);
+  luaL_checktype(L, 2, LUA_TBOOLEAN);
+  GCobj* o = gcV(tv);
+
+  // TODO: implement read-only/permanent
+
+  return 0;
+}
+
+// These are just for checking the tri-color system, not really special
+LJLIB_CF(debug_iswhite)
+{
+  TValue *tv = lj_lib_checkany(L, 1);
+  lua_pushboolean(L, iswhite(gcV(tv)));
+  return 1;
+}
+
+LJLIB_CF(debug_isgray)
+{
+  TValue *tv = lj_lib_checkany(L, 1);
+  lua_pushboolean(L, isgray(gcV(tv)));
+  return 1;
+}
+
+LJLIB_CF(debug_isblack)
+{
+  TValue *tv = lj_lib_checkany(L, 1);
+  lua_pushboolean(L, isblack(gcV(tv)));
+  return 1;
+}
+
+// Attempts to promote a GC object to the next tier generation (max at GC_BUCKETS)
+LJLIB_CF(debug_promote)
+{
+  TValue *tv = lj_lib_checkany(L, 1);
+  lua_pushboolean(L, gc_promote_object(G(L), gcV(tv)));
+  return 1;
+}
+
+// Demotes a GC object back to the 1st tier generation
+LJLIB_CF(debug_demote)
+{
+  TValue *tv = lj_lib_checkany(L, 1);
+  lua_pushboolean(L, gc_demote_object(G(L), gcV(tv)));
+  return 1;
+}
+
+/* ------------------------------------------------------------------------ */
+
 #include "lj_libdef.h"
 
 LUALIB_API int luaopen_debug(lua_State *L)

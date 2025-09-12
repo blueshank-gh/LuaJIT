@@ -128,6 +128,9 @@ GCtrace * LJ_FASTCALL lj_trace_alloc(lua_State *L, GCtrace *T)
   GCtrace *T2 = lj_mem_newt(L, (MSize)sz, GCtrace);
   char *p = (char *)T2 + sztr;
   T2->gct = ~LJ_TTRACE;
+  T2->gcf = 0;
+  T2->bucket = 0;
+  T2->age = 0;
   T2->marked = 0;
   T2->traceno = 0;
   T2->ir = (IRIns *)p - T->nk;
@@ -150,6 +153,9 @@ static void trace_save(jit_State *J, GCtrace *T)
   setgcrefp(J2G(J)->gc.root[T->bucket], T);
   newwhite(J2G(J), T);
   T->gct = ~LJ_TTRACE;
+  T->gcf = 0;
+  T->bucket = 0;
+  T->age = 0;
   T->ir = (IRIns *)p - J->cur.nk;  /* The IR has already been copied above. */
   p += szins;
   TRACE_APPENDVEC(snap, nsnap, SnapShot)
@@ -429,6 +435,7 @@ static void trace_start(jit_State *J)
 
   /* Setup enough of the current trace to be able to send the vmevent. */
   memset(&J->cur, 0, sizeof(GCtrace));
+  J->cur.gcf = 0;
   J->cur.bucket = 0;
   J->cur.age = 0;
   J->cur.traceno = traceno;

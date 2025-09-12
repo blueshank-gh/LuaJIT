@@ -1286,9 +1286,7 @@ LUA_API int lua_gc(lua_State *L, int what, int data)
     g->gc.threshold = data == -1 ? (g->gc.total/100)*g->gc.pause : g->gc.total;
     break;
   case LUA_GCCOLLECT:
-    for (uint8_t i = 0; i < GC_BUCKETS; ++i) {
-      lj_gc_fullgc(L, i);
-    }
+    lj_gc_fullgc(L);
     break;
   case LUA_GCCOUNT:
     res = (int)(g->gc.total >> 10);
