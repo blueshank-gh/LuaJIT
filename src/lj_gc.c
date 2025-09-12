@@ -6,6 +6,37 @@
 ** Copyright (C) 1994-2008 Lua.org, PUC-Rio. See Copyright Notice in lua.h
 */
 
+/*
+  Hi, I'm trying to change the GC, because I lag from having millions of objects in my GC
+
+  Currently this tri-color system has two major performance problems.
+  1. GCSpropagate - large array/hash from tables, upvalues, etc.
+  2. GCSsweep - loops entire gc.root list, gets worse as GC increases with alive objects.
+
+  The proposed solution is to create a tri-color Generational GC, which targets GCSpropagate and GCSsweep.
+  This will essentially separate long-lived objects and will run GCSpropagate and GCSsweep exclusively under conditions.
+  GCheader will be given a uint8_t tier, uint8_t age, and extra uint8_t just for aligning or extras.
+  (Note: udata has an align1 extra, that can be removed.)
+  The GCState struct will be given extra linked lists for this of course.
+  Objects deemed to be permanent residence in the GC can be given a "permanent" flag, this will make them read-only
+  ^ will need to modify DynASM parts for this, so thats last.
+
+  For now the basic condition for this will be based on this algorithm.
+  Just for simplicity before we implement any complex barrier, threshold and aging algorithm.
+
+  uint8_t gc_select_tier() {
+      static uint32_t ff = 0;
+      for (uint8_t i = 1; i < GC_TIERS; ++i) {
+          if (ff % (i * 2) == (i * 2) - 1) {
+              if (++ff == 0xFFFFFFFF) ff = 0;
+              return i;
+          }
+      }
+      if (++ff == 0xFFFFFFFF) ff = 0;
+      return 0;
+  }
+*/
+
 #define lj_gc_c
 #define LUA_CORE
 
