@@ -505,6 +505,22 @@
 #define LJ_HASPROFILE		0
 #endif
 
+#if LJ_HASPROFILE
+#define LJ_DISPATCH_LOCK	1
+#else
+#define LJ_DISPATCH_LOCK	0
+#endif
+
+#if LJ_DISPATCH_LOCK
+#if LJ_TARGET_POSIX || LJ_TARGET_PS3
+#define LJ_LOCK_PTHREAD     1
+#define LJ_LOCK_CRITSECT    0
+#elif LJ_TARGET_WINDOWS || LJ_TARGET_XBOX360
+#define LJ_LOCK_CRITSECT    1
+#define LJ_LOCK_PTHREAD     0
+#endif
+#endif
+
 #ifndef LJ_ARCH_HASFPU
 #define LJ_ARCH_HASFPU		1
 #endif

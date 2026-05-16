@@ -13,6 +13,20 @@
 #include "lj_def.h"
 #include "lj_arch.h"
 
+#if LJ_DISPATCH_LOCK
+#if LJ_LOCK_PTHREAD
+#include <pthread.h>
+#elif LJ_LOCK_CRITSECT
+#define WIN32_LEAN_AND_MEAN
+#if LJ_TARGET_XBOX360
+#include <xtl.h>
+#include <xbox.h>
+#else
+#include <windows.h>
+#endif
+#endif
+#endif
+
 /* -- Memory references (32 bit address space) ---------------------------- */
 
 /* Memory and GC object sizes. */
@@ -604,6 +618,13 @@ typedef struct global_State {
   uint8_t stremptyz;	/* Zero terminator of empty string. */
   uint8_t hookmask;	/* Hook mask. */
   uint8_t dispatchmode;	/* Dispatch mode. */
+#if LJ_DISPATCH_LOCK
+#if LJ_LOCK_PTHREAD
+  pthread_mutex_t displock;		/* Dispatch table update lock. */
+#elif LJ_LOCK_CRITSECT
+  CRITICAL_SECTION displock;	/* Dispatch table update lock. */
+#endif
+#endif
   uint8_t vmevmask;	/* VM event mask. */
   GCRef mainthref;	/* Link to main thread. */
   TValue registrytv;	/* Anchor for registry. */

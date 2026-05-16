@@ -56,6 +56,19 @@ static const ASMFunction dispatch_got[] = {
 #undef GOTFUNC
 #endif
 
+#if LJ_DISPATCH_LOCK
+#if LJ_LOCK_PTHREAD
+#define dispatch_lock(g)    pthread_mutex_lock(&(g)->displock)
+#define dispatch_unlock(g)  pthread_mutex_unlock(&(g)->displock)
+#elif LJ_LOCK_CRITSECT
+#define dispatch_lock(g)    EnterCriticalSection(&(g)->displock)
+#define dispatch_unlock(g)  LeaveCriticalSection(&(g)->displock)
+#endif
+#elif
+#define dispatch_lock(g)    UNUSED(g)
+#define dispatch_unlock(g)  UNUSED(g)
+#endif
+
 /* Initialize instruction dispatch table and hot counters. */
 void lj_dispatch_init(GG_State *GG)
 {
@@ -103,6 +116,7 @@ void lj_dispatch_init_hotcount(global_State *g)
 /* Update dispatch table depending on various flags. */
 void lj_dispatch_update(global_State *g)
 {
+  dispatch_lock(g);
   uint8_t oldmode = g->dispatchmode;
   uint8_t mode = 0;
 #if LJ_HASJIT
@@ -202,6 +216,7 @@ void lj_dispatch_update(global_State *g)
       lj_dispatch_init_hotcount(g);
 #endif
   }
+  dispatch_unlock(g);
 }
 
 /* -- JIT mode setting ---------------------------------------------------- */
