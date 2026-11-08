@@ -106,14 +106,14 @@
 
 /* Optimization parameters and their defaults. Length is a char in octal! */
 #define JIT_PARAMDEF(_) \
-  _(\010, maxtrace,	1000)	/* Max. # of traces in cache. */ \
+  _(\010, maxtrace,	16000)	/* Max. # of traces in cache. */ \
   _(\011, maxrecord,	4000)	/* Max. # of recorded IR instructions. */ \
   _(\012, maxirconst,	500)	/* Max. # of IR constants of a trace. */ \
   _(\007, maxside,	100)	/* Max. # of side traces of a root trace. */ \
   _(\007, maxsnap,	500)	/* Max. # of snapshots for a trace. */ \
   _(\011, minstitch,	0)	/* Min. # of IR ins for a stitched trace. */ \
   \
-  _(\007, hotloop,	56)	/* # of iter. to detect a hot loop/call. */ \
+  _(\007, hotloop,	200)	/* # of iter. to detect a hot loop/call. */ \
   _(\007, hotexit,	10)	/* # of taken exits to start a side trace. */ \
   _(\007, tryside,	4)	/* # of attempts to compile a side trace. */ \
   \
@@ -125,7 +125,7 @@
   /* Size of each machine code area (in KBytes). */ \
   _(\011, sizemcode,	64) \
   /* Max. total size of all machine code areas (in KBytes). */ \
-  _(\010, maxmcode,	2048) \
+  _(\010, maxmcode,	8192) \
   /* End of list. */
 
 enum {

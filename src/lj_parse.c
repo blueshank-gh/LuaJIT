@@ -1107,7 +1107,6 @@ static LJ_AINLINE int lex_isname(LexToken tok)
 {
   return (tok == TK_name ||
 	  (!LJ_52 && tok == TK_goto) ||
-	  tok == TK_continue ||
 	  tok == TK_const);
 }
 
@@ -3052,14 +3051,10 @@ static int parse_stmt(LexState *ls)
     lj_lex_next(ls);
     parse_break(ls);
     return !LJ_52;  /* Must be last in Lua 5.1. */
-  case TK_continue: {
-    LexToken tokx = lj_lex_lookahead(ls);
-    if (!(parse_isend(tokx) || tokx == ';'))
-      goto assign;  /* Soft keyword. */
+  case TK_continue:
     lj_lex_next(ls);
     parse_continue(ls);
     return 1;  /* Must be last. */
-  }
   case ';':
     lj_lex_next(ls);
     break;

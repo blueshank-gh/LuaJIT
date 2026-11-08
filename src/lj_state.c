@@ -169,6 +169,29 @@ int LJ_FASTCALL lj_state_cpgrowstack(lua_State *L, MSize need)
   return lj_vm_cpcall(L, NULL, &need, cpgrowstack);
 }
 
+#if defined(_MSC_VER) && defined(_M_IX86)
+static void __declspec(naked) gmod_luabase_setstate(void)
+{
+  __asm {
+    mov eax, [esp+4]
+    mov ecx, eax
+    mov eax, [eax]
+    push dword ptr [esp+8]
+    call dword ptr [eax+200]
+    ret
+  }
+}
+#define gmod_call_luabase_setstate(luabase, L) \
+  ((void (__cdecl *)(void *, lua_State *))gmod_luabase_setstate)((luabase), (L))
+#else
+typedef void (*GMOD_SetState)(void *, lua_State *);
+static void gmod_luabase_setstate(void *luabase, lua_State *L)
+{
+  ((GMOD_SetState)(*(void ***)luabase)[50])(luabase, L);
+}
+#define gmod_call_luabase_setstate(luabase, L) gmod_luabase_setstate((luabase), (L))
+#endif
+
 /* Allocate basic stack for new state. */
 static void stack_init(lua_State *L1, lua_State *L)
 {
@@ -182,6 +205,11 @@ static void stack_init(lua_State *L1, lua_State *L)
   L1->base = L1->top = st;
   while (st < stend)  /* Clear new slots. */
     setnilV(st++);
+  if (L && L != L1) {
+    L1->luabase = L->luabase;
+    if (L1->luabase)
+      gmod_call_luabase_setstate(L1->luabase, L);
+  }
 }
 
 /* -- State handling ------------------------------------------------------ */

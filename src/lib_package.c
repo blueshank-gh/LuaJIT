@@ -36,8 +36,13 @@
 
 #include <dlfcn.h>
 
-static void ll_unloadlib(void *lib)
+static void ll_unloadlib(lua_State *L, void *lib)
 {
+  lua_CFunction g_close = (lua_CFunction)dlsym(lib, "gmod13_close");
+  if (g_close) {
+    lua_pushcfunction(L, g_close);
+    lua_call(L, 0, 0);
+  }
   dlclose(lib);
 }
 
@@ -126,8 +131,14 @@ static void pusherror(lua_State *L)
     lua_pushfstring(L, "system error %d\n", error);
 }
 
-static void ll_unloadlib(void *lib)
+static void ll_unloadlib(lua_State *L, void *lib)
 {
+  lua_CFunction g_close =
+    (lua_CFunction)GetProcAddress((HINSTANCE)lib, "gmod13_close");
+  if (g_close) {
+    lua_pushcfunction(L, g_close);
+    lua_call(L, 0, 0);
+  }
   FreeLibrary((HINSTANCE)lib);
 }
 
@@ -175,9 +186,9 @@ static const char *ll_bcsym(void *lib, const char *sym)
 
 #define DLMSG	"dynamic libraries not enabled; no support for target OS"
 
-static void ll_unloadlib(void *lib)
+static void ll_unloadlib(lua_State *L, void *lib)
 {
-  UNUSED(lib);
+  UNUSED(L); UNUSED(lib);
 }
 
 static void *ll_load(lua_State *L, const char *path, int gl)
@@ -287,7 +298,7 @@ static int lj_cf_package_loadlib(lua_State *L)
 static int lj_cf_package_unloadlib(lua_State *L)
 {
   void **lib = (void **)luaL_checkudata(L, 1, "_LOADLIB");
-  if (*lib) ll_unloadlib(*lib);
+  if (*lib) ll_unloadlib(L, *lib);
   *lib = NULL;  /* mark library as closed */
   return 0;
 }

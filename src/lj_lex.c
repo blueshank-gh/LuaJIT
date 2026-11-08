@@ -378,6 +378,30 @@ static LexToken lex_scan(LexState *ls, TValue *tv)
     case '\f':
       lex_next(ls);
       continue;
+    case '/':
+      lex_next(ls);
+      if (ls->c == '/') {
+	while (!lex_iseol(ls) && ls->c != LEX_EOF)
+	  lex_next(ls);
+      } else if (ls->c == '*') {
+	lex_next(ls);
+	for (;;) {
+	  if (ls->c == '*') {
+	    lex_next(ls);
+	    if (ls->c == '/') {
+	      lex_next(ls);
+	      break;
+	    }
+	  } else if (ls->c == LEX_EOF) {
+	    break;
+	  } else {
+	    lex_next(ls);
+	  }
+	}
+      } else {
+	return '/';
+      }
+      continue;
     case '-':
       lex_next(ls);
       if (ls->c != '-') {

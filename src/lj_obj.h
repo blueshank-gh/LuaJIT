@@ -703,6 +703,8 @@ struct lua_State {
   GCRef env;		/* Thread environment (table of globals). */
   void *cframe;		/* End of C stack frame chain. */
   MSize stacksize;	/* True stack size (incl. LJ_STACK_EXTRA). */
+  char garryvars[22];
+  void *luabase;
 };
 
 #define G(L)			(mref(L->glref, global_State))
