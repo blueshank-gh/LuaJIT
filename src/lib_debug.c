@@ -379,6 +379,120 @@ LJLIB_CF(debug_debug)
 
 /* ------------------------------------------------------------------------ */
 
+static int debug_getgc_match(global_State *g, GCobj *o, const char *filter, MSize flen)
+{
+  if (o->gch.gct == (uint8_t)~LJ_TTRACE || isdead(g, o))
+    return 0;
+  if (filter) {
+    const char *tn = lj_obj_itypename[o->gch.gct];
+    size_t n = strlen(tn);
+    if (n != (size_t)flen || memcmp(tn, filter, n) != 0)
+      return 0;
+  }
+  return 1;
+}
+
+static size_t debug_getgc_count(global_State *g, const char *filter, MSize flen)
+{
+  size_t n = 0;
+  GCobj *o;
+  MSize i;
+  for (o = gcref(g->gc.root); o; o = gcnext(o))
+    if (debug_getgc_match(g, o, filter, flen))
+      n++;
+  if (g->str.tab) {
+    for (i = 0; i <= g->str.mask; i++) {
+      o = (GCobj *)(gcrefu(g->str.tab[i]) & ~(uintptr_t)1);
+      while (o) {
+	GCobj *next = (GCobj *)(gcrefu(o->gch.nextgc) & ~(uintptr_t)1);
+	if (debug_getgc_match(g, o, filter, flen))
+	  n++;
+	o = next;
+      }
+    }
+  }
+  return n;
+}
+
+static void debug_getgc_fill(lua_State *L, global_State *g, const char *filter, MSize flen)
+{
+  int idx = 0;
+  GCobj *o;
+  GCobj *self = obj2gco(tabV(L->top-1));
+  MSize i;
+  for (o = gcref(g->gc.root); o; o = gcnext(o)) {
+    if (o != self && debug_getgc_match(g, o, filter, flen)) {
+      setgcV(L, L->top, o, ~o->gch.gct);
+      L->top++;
+      lua_rawseti(L, -2, ++idx);
+    }
+  }
+  if (g->str.tab) {
+    for (i = 0; i <= g->str.mask; i++) {
+      o = (GCobj *)(gcrefu(g->str.tab[i]) & ~(uintptr_t)1);
+      while (o) {
+        GCobj *next = (GCobj *)(gcrefu(o->gch.nextgc) & ~(uintptr_t)1);
+        if (o != self && debug_getgc_match(g, o, filter, flen)) {
+          setgcV(L, L->top, o, ~o->gch.gct);
+          L->top++;
+          lua_rawseti(L, -2, ++idx);
+        }
+        o = next;
+      }
+    }
+  }
+}
+
+static int debug_getgc_iter(lua_State *L)
+{
+  lua_Integer i = lua_tointeger(L, 2) + 1;
+  lua_rawgeti(L, 1, (int)i);
+  if (lua_isnil(L, -1)) {
+    lua_pop(L, 1);
+    return 0;
+  }
+  lua_pushinteger(L, i);
+  lua_insert(L, -2);
+  return 2;
+}
+
+LJLIB_CF(debug_getgc)
+{
+  global_State *g = G(L);
+  const char *filter = NULL;
+  MSize flen = 0;
+  int iter = 0;
+  size_t n;
+  GCSize oldt;
+  if (L->base < L->top) {
+    if (tvisbool(L->base) && tvistrue(L->base)) {
+      iter = 1;
+      if (L->base+1 < L->top && tvisstr(L->base+1)) {
+        filter = strdata(strV(L->base+1));
+        flen = strV(L->base+1)->len;
+      }
+    } else if (tvisstr(L->base)) {
+      filter = strdata(strV(L->base));
+      flen = strV(L->base)->len;
+    }
+  }
+  n = debug_getgc_count(g, filter, flen);
+  lua_createtable(L, (int)n, 0);
+  oldt = g->gc.threshold;
+  g->gc.threshold = LJ_MAX_MEM;
+  debug_getgc_fill(L, g, filter, flen);
+  g->gc.threshold = oldt;
+  if (iter) {
+    lua_pushcfunction(L, debug_getgc_iter);
+    lua_insert(L, -2);
+    lua_pushnil(L);
+    return 3;
+  }
+  return 1;
+}
+
+/* ------------------------------------------------------------------------ */
+
 #define LEVELS1	12	/* size of the first part of the stack */
 #define LEVELS2	10	/* size of the second part of the stack */
 

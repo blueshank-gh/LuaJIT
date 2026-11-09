@@ -144,6 +144,8 @@ GCtrace * LJ_FASTCALL lj_trace_alloc(lua_State *L, GCtrace *T)
 /* Save current trace by copying and compacting it. */
 static void trace_save(jit_State *J, GCtrace *T)
 {
+  J->trc_nrecord++;
+  J->trc_lasttrace = (uint32_t)J->cur.traceno;
   size_t sztr = ((sizeof(GCtrace)+7)&~7);
   size_t szins = (J->cur.nins-J->cur.nk)*sizeof(IRIns);
   char *p = (char *)T + sztr;
@@ -279,6 +281,7 @@ int lj_trace_flushall(lua_State *L)
   ptrdiff_t i;
   if ((J2G(J)->hookmask & HOOK_GC))
     return 1;
+  J->trc_nflush++;
   for (i = (ptrdiff_t)J->sizetrace-1; i > 0; i--) {
     GCtrace *T = traceref(J, i);
     if (T) {
@@ -600,6 +603,18 @@ static int trace_abort(jit_State *J)
     L->top--;  /* Remove error object */
     J->state = LJ_TRACE_ASM;
     return 1;  /* Retry ASM with new MCode area. */
+  }
+  J->trc_nabort++;
+  if (e >= 0 && e < LJ_TRC_ERRMAX)
+    J->trc_abort[e]++;
+  J->trc_lastabort = (int32_t)e;
+  J->trc_lastabortchunk[0] = '\0';
+  if (J->pt) {
+    GCstr *cn = proto_chunkname(J->pt);
+    MSize cl = (MSize)(cn->len < (MSize)sizeof(J->trc_lastabortchunk)-1
+		       ? cn->len : (MSize)sizeof(J->trc_lastabortchunk)-1);
+    memcpy(J->trc_lastabortchunk, strdata(cn), cl);
+    J->trc_lastabortchunk[cl] = '\0';
   }
   /* Penalize or blacklist starting bytecode instruction. */
   if (J->parent == 0 && !bc_isret(bc_op(J->cur.startins))) {

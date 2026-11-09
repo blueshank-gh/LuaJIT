@@ -10,6 +10,8 @@
 #if LJ_HASJIT
 #include "lj_ir.h"
 
+#define LJ_TRC_ERRMAX 64
+
 /* -- JIT engine flags ---------------------------------------------------- */
 
 /* General JIT engine flags. 4 bits. */
@@ -474,6 +476,14 @@ typedef struct jit_State {
   TraceNo freetrace;	/* Start of scan for next free trace. */
   MSize sizetrace;	/* Size of trace array. */
   IRRef1 ktrace;	/* Reference to KGC with GCtrace. */
+
+  uint64_t trc_nrecord;
+  uint64_t trc_nabort;
+  uint64_t trc_nflush;
+  uint64_t trc_abort[LJ_TRC_ERRMAX];
+  uint32_t trc_lasttrace;
+  int32_t trc_lastabort;
+  char trc_lastabortchunk[96];
 
   IRRef1 chain[IR__MAX];  /* IR instruction skip-list chain anchors. */
   TRef slot[LJ_MAX_JSLOTS+LJ_STACK_EXTRA];  /* Stack slot map. */

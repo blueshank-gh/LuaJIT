@@ -632,6 +632,237 @@ static int luaopen_jit_profile(lua_State *L)
 
 #endif
 
+/* -- jit.stat module ----------------------------------------------------- */
+
+#if LJ_HASJIT
+
+static const char *const jit_trace_errname[] = {
+  #define TREDEF(name, msg)	#name,
+  #include "lj_traceerr.h"
+  #undef TREDEF
+};
+
+LJ_STATIC_ASSERT(LJ_TRERR__MAX <= LJ_TRC_ERRMAX);
+
+#define LJLIB_MODULE_jit_stat
+
+static const char *jit_stat_state_name(TraceState st)
+{
+  switch (st) {
+  case LJ_TRACE_IDLE: return "idle";
+  case LJ_TRACE_START: return "start";
+  case LJ_TRACE_RECORD: return "record";
+  case LJ_TRACE_RECORD_1ST: return "record_1st";
+  case LJ_TRACE_END: return "end";
+  case LJ_TRACE_ASM: return "asm";
+  case LJ_TRACE_ERR: return "err";
+  default: return "active";
+  }
+}
+
+static void jit_stat_setint(lua_State *L, const char *name, lua_Integer v)
+{
+  lua_pushinteger(L, v);
+  lua_setfield(L, -2, name);
+}
+
+static void jit_stat_setnum(lua_State *L, const char *name, lua_Number v)
+{
+  lua_pushnumber(L, v);
+  lua_setfield(L, -2, name);
+}
+
+static void jit_stat_setstr(lua_State *L, const char *name, const char *v)
+{
+  lua_pushstring(L, v);
+  lua_setfield(L, -2, name);
+}
+
+static void jit_stat_setbool(lua_State *L, const char *name, int v)
+{
+  lua_pushboolean(L, v);
+  lua_setfield(L, -2, name);
+}
+
+static void jit_stat_push_traces(lua_State *L, jit_State *J)
+{
+  MSize i, n = 0, roots = 0, sides = 0;
+  uint64_t ir = 0, snap = 0, mc = 0;
+  for (i = 1; i < J->sizetrace; i++) {
+    GCtrace *T = traceref(J, i);
+    if (T) {
+      n++;
+      if (T->root == 0) roots++; else sides++;
+      ir += T->nins;
+      snap += T->nsnap;
+      mc += T->szmcode;
+    }
+  }
+  lua_createtable(L, 0, 7);
+  jit_stat_setint(L, "count", (lua_Integer)n);
+  jit_stat_setint(L, "max", (lua_Integer)J->param[JIT_P_maxtrace]);
+  jit_stat_setint(L, "roots", (lua_Integer)roots);
+  jit_stat_setint(L, "sides", (lua_Integer)sides);
+  jit_stat_setnum(L, "ir", (lua_Number)ir);
+  jit_stat_setnum(L, "snapshots", (lua_Number)snap);
+  jit_stat_setnum(L, "mcode_bytes", (lua_Number)mc);
+}
+
+static void jit_stat_push_mcode(lua_State *L, jit_State *J)
+{
+  MSize i;
+  uint64_t used = 0;
+  for (i = 1; i < J->sizetrace; i++) {
+    GCtrace *T = traceref(J, i);
+    if (T) used += T->szmcode;
+  }
+  lua_createtable(L, 0, 4);
+  jit_stat_setnum(L, "used", (lua_Number)used);
+  jit_stat_setnum(L, "allocated", (lua_Number)J->szallmcarea);
+  jit_stat_setnum(L, "max", (lua_Number)J->param[JIT_P_maxmcode] * 1024.0);
+  jit_stat_setnum(L, "area", (lua_Number)J->param[JIT_P_sizemcode] * 1024.0);
+}
+
+static void jit_stat_push_aborts(lua_State *L, jit_State *J)
+{
+  uint32_t i;
+  lua_createtable(L, 0, 5);
+  jit_stat_setnum(L, "total", (lua_Number)J->trc_nabort);
+  lua_createtable(L, 0, 0);
+  for (i = 0; i < LJ_TRERR__MAX; i++) {
+    if (J->trc_abort[i]) {
+      lua_pushnumber(L, (lua_Number)J->trc_abort[i]);
+      lua_setfield(L, -2, jit_trace_errname[i]);
+    }
+  }
+  lua_setfield(L, -2, "by_reason");
+  jit_stat_setint(L, "last_code", (lua_Integer)J->trc_lastabort);
+  jit_stat_setstr(L, "last_name",
+    (J->trc_nabort && J->trc_lastabort >= 0 &&
+     J->trc_lastabort < LJ_TRERR__MAX) ? jit_trace_errname[J->trc_lastabort] : "");
+  jit_stat_setstr(L, "last_chunk", J->trc_nabort ? J->trc_lastabortchunk : "");
+}
+
+static void jit_stat_push_params(lua_State *L, jit_State *J)
+{
+  lua_createtable(L, 0, 15);
+#define JITSTAT_PARAM(name) \
+  jit_stat_setint(L, #name, (lua_Integer)J->param[JIT_P_##name])
+  JITSTAT_PARAM(maxtrace);
+  JITSTAT_PARAM(maxrecord);
+  JITSTAT_PARAM(maxirconst);
+  JITSTAT_PARAM(maxside);
+  JITSTAT_PARAM(maxsnap);
+  JITSTAT_PARAM(minstitch);
+  JITSTAT_PARAM(hotloop);
+  JITSTAT_PARAM(hotexit);
+  JITSTAT_PARAM(tryside);
+  JITSTAT_PARAM(instunroll);
+  JITSTAT_PARAM(loopunroll);
+  JITSTAT_PARAM(callunroll);
+  JITSTAT_PARAM(recunroll);
+  JITSTAT_PARAM(sizemcode);
+  JITSTAT_PARAM(maxmcode);
+#undef JITSTAT_PARAM
+}
+
+LJLIB_CF(jit_stat_traces)
+{
+  jit_stat_push_traces(L, L2J(L));
+  return 1;
+}
+
+LJLIB_CF(jit_stat_mcode)
+{
+  jit_stat_push_mcode(L, L2J(L));
+  return 1;
+}
+
+LJLIB_CF(jit_stat_aborts)
+{
+  jit_stat_push_aborts(L, L2J(L));
+  return 1;
+}
+
+LJLIB_CF(jit_stat_flushes)
+{
+  lua_pushnumber(L, (lua_Number)L2J(L)->trc_nflush);
+  return 1;
+}
+
+LJLIB_CF(jit_stat_params)
+{
+  jit_stat_push_params(L, L2J(L));
+  return 1;
+}
+
+LJLIB_CF(jit_stat_tracestate)
+{
+  jit_State *J = L2J(L);
+  int rec = (J->state != LJ_TRACE_IDLE);
+  int ab = J->trc_lastabort;
+  const char *abname = (J->trc_nabort && ab >= 0 && ab < LJ_TRERR__MAX)
+		       ? jit_trace_errname[ab] : "";
+  lua_pushboolean(L, rec);
+  lua_pushstring(L, jit_stat_state_name(J->state));
+  lua_pushinteger(L, rec ? (lua_Integer)J->cur.traceno : 0);
+  lua_pushinteger(L, rec ? (lua_Integer)J->parent : 0);
+  lua_pushnumber(L, (lua_Number)J->trc_nrecord);
+  lua_pushnumber(L, (lua_Number)J->trc_nabort);
+  lua_pushnumber(L, (lua_Number)J->trc_nflush);
+  lua_pushinteger(L, (lua_Integer)J->trc_lasttrace);
+  lua_pushstring(L, abname);
+  lua_pushstring(L, J->trc_nabort ? J->trc_lastabortchunk : "");
+  return 10;
+}
+
+LJLIB_CF(jit_stat_all)
+{
+  jit_State *J = L2J(L);
+  lua_createtable(L, 0, 11);
+  jit_stat_push_traces(L, J);
+  lua_setfield(L, -2, "traces");
+  jit_stat_push_mcode(L, J);
+  lua_setfield(L, -2, "mcode");
+  jit_stat_push_aborts(L, J);
+  lua_setfield(L, -2, "aborts");
+  jit_stat_push_params(L, J);
+  lua_setfield(L, -2, "params");
+  jit_stat_setnum(L, "records", (lua_Number)J->trc_nrecord);
+  jit_stat_setnum(L, "flushes", (lua_Number)J->trc_nflush);
+  jit_stat_setint(L, "lasttrace", (lua_Integer)J->trc_lasttrace);
+  jit_stat_setbool(L, "recording", J->state != LJ_TRACE_IDLE);
+  jit_stat_setstr(L, "state", jit_stat_state_name(J->state));
+  jit_stat_setint(L, "traceno",
+    (lua_Integer)(J->state != LJ_TRACE_IDLE ? J->cur.traceno : 0));
+  jit_stat_setint(L, "parent",
+    (lua_Integer)(J->state != LJ_TRACE_IDLE ? J->parent : 0));
+  return 1;
+}
+
+LJLIB_CF(jit_stat_reset)
+{
+  jit_State *J = L2J(L);
+  J->trc_nrecord = 0;
+  J->trc_nabort = 0;
+  J->trc_nflush = 0;
+  memset(J->trc_abort, 0, sizeof(J->trc_abort));
+  J->trc_lasttrace = 0;
+  J->trc_lastabort = 0;
+  J->trc_lastabortchunk[0] = '\0';
+  return 0;
+}
+
+#include "lj_libdef.h"
+
+static int luaopen_jit_stat(lua_State *L)
+{
+  LJ_LIB_REG(L, NULL, jit_stat);
+  return 1;
+}
+
+#endif
+
 /* -- JIT compiler initialization ----------------------------------------- */
 
 #if LJ_HASJIT
@@ -767,6 +998,7 @@ LUALIB_API int luaopen_jit(lua_State *L)
   lj_lib_prereg(L, LUA_JITLIBNAME ".util", luaopen_jit_util, tabref(L->env));
 #endif
 #if LJ_HASJIT
+  lj_lib_prereg(L, LUA_JITLIBNAME ".stat", luaopen_jit_stat, tabref(L->env));
   LJ_LIB_REG(L, "jit.opt", jit_opt);
 #endif
   L->top -= 2;
