@@ -313,6 +313,9 @@ LUA_API lua_State *lua_newstate(lua_Alloc allocf, void *allocd)
   g->allocf = allocf;
   g->allocd = allocd;
   g->prng = prng;
+#if LJ_HASJIT && defined(LUAJIT_ENABLE_CHECKHOOK)
+  G2J(g)->checkhook = 1;
+#endif
 #ifndef LUAJIT_USE_SYSMALLOC
   if (allocf == lj_alloc_f) {
     lj_alloc_setprng(allocd, &g->prng);

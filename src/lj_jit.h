@@ -12,6 +12,12 @@
 
 #define LJ_TRC_ERRMAX 64
 
+#ifdef LUAJIT_ENABLE_CHECKHOOK
+#define LJ_CHECKHOOK(J)		((J)->checkhook)
+#else
+#define LJ_CHECKHOOK(J)		0
+#endif
+
 /* -- JIT engine flags ---------------------------------------------------- */
 
 /* General JIT engine flags. 4 bits. */
@@ -434,6 +440,7 @@ typedef struct jit_State {
   uint8_t needsnap;	/* Need snapshot before recording next bytecode. */
   IRType1 guardemit;	/* Accumulated IRT_GUARD for emitted instructions. */
   uint8_t bcskip;	/* Number of bytecode instructions to skip. */
+  uint8_t checkhook;	/* Check hooks in compiled code. */
 
   FoldState fold;	/* Fold state. */
 

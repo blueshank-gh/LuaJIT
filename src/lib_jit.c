@@ -87,6 +87,34 @@ LJLIB_CF(jit_flush)
   return setjitmode(L, LUAJIT_MODE_FLUSH);
 }
 
+LJLIB_CF(jit_checkhook)
+{
+  #if LJ_HASJIT
+  jit_State *J = L2J(L);
+  if (L->base < L->top && !tvisnil(L->base)) {
+    #ifdef LUAJIT_ENABLE_CHECKHOOK
+    if (!tvisbool(L->base))
+      lj_err_argt(L, 1, LUA_TBOOLEAN);
+    if (J->checkhook != (uint8_t)tvistrue(L->base)) {
+      global_State *g = G(L);
+      if (g->hookmask & HOOK_GC)
+        lj_err_caller(L, LJ_ERR_NOGCMM);
+        J->checkhook = (uint8_t)tvistrue(L->base);
+        lj_trace_abort(g);
+        lj_trace_flushall(L);
+      }
+    #else
+    luaL_error(L, "checkhook support is not compiled in");
+    #endif
+  }
+  setboolV(L->top++, LJ_CHECKHOOK(J) != 0);
+  return 1;
+  #else
+  setboolV(L->top++, 0);
+  return 1;
+  #endif
+}
+
 #if LJ_HASJIT
 /* Push a string for every flag bit that is set. */
 static void flagbits_to_strings(lua_State *L, uint32_t flags, uint32_t base,
@@ -966,6 +994,9 @@ static void jit_init(lua_State *L)
 {
   jit_State *J = L2J(L);
   J->flags = jit_cpudetect() | JIT_F_ON | JIT_F_OPT_DEFAULT;
+#ifdef LUAJIT_ENABLE_CHECKHOOK
+  J->checkhook = 1;
+#endif
   memcpy(J->param, jit_param_default, sizeof(J->param));
 #if LJ_TARGET_UNALIGNED
   G(L)->tmptv.u64 = U64x(0000504d,4d500000);
