@@ -580,7 +580,6 @@ static void setpath(lua_State *L, const char *fieldname, const char *envname,
 }
 
 static const luaL_Reg package_lib[] = {
-  { "loadlib",	lj_cf_package_loadlib },
   { "searchpath",  lj_cf_package_searchpath },
   { "seeall",	lj_cf_package_seeall },
   { NULL, NULL }
@@ -596,8 +595,6 @@ static const lua_CFunction package_loaders[] =
 {
   lj_cf_package_loader_preload,
   lj_cf_package_loader_lua,
-  lj_cf_package_loader_c,
-  lj_cf_package_loader_croot,
   NULL
 };
 

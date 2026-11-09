@@ -449,17 +449,6 @@ LJLIB_CF(loadstring)
   return lj_cf_load(L);
 }
 
-LJLIB_CF(dofile)
-{
-  GCstr *fname = lj_lib_optstr(L, 1);
-  setnilV(L->top);
-  L->top = L->base+1;
-  if (luaL_loadfile(L, fname ? strdata(fname) : NULL) != LUA_OK)
-    lua_error(L);
-  lua_call(L, 0, LUA_MULTRET);
-  return (int)(L->top - L->base) - 1;
-}
-
 /* -- Base library: GC control -------------------------------------------- */
 
 LJLIB_CF(gcinfo)
